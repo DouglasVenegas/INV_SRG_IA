@@ -1,38 +1,21 @@
-"""
-Sistema de Inventario de Reactivos Químicos - Versión Streamlit + Google Sheets
-==============================================================================
-
-Aplicación web para gestionar inventario de reactivos químicos directamente
-con respaldo en Google Sheets.
-
-INSTALACIÓN DE DEPENDENCIAS:
-pip install streamlit pandas gspread oauth2client
-
-EJECUCIÓN:
-streamlit run app.py
-"""
-
-import streamlit as st
-import pandas as pd
-from datetime import datetime, timedelta
+import os
+import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-
-# ============================================================================
-# CONFIGURACIÓN DE GOOGLE SHEETS
-# ============================================================================
 
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets',
           'https://www.googleapis.com/auth/drive']
 
-SERVICE_ACCOUNT_FILE = "service_account.json"  # Archivo JSON de servicio
+# Cargar credenciales desde Streamlit Secrets
+service_account_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT'])
+creds = ServiceAccountCredentials.from_json_keyfile_dict(service_account_info, SCOPES)
+
+# Conectar con Google Sheets
 SHEET_ID = "1Z16IVvPiDIZ8UsNRSiAGX5eccW-ktoWXrZaxSRnGx4Y"
-
-creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_FILE, SCOPES)
 client = gspread.authorize(creds)
-
 sheet_inventario = client.open_by_key(SHEET_ID).worksheet("Inventario")
 sheet_log = client.open_by_key(SHEET_ID).worksheet("Log")
+
 
 # ============================================================================
 # CONFIGURACIÓN DE STREAMLIT
