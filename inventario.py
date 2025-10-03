@@ -2,34 +2,61 @@ import gspread
 import pandas as pd
 from datetime import datetime, timedelta
 import streamlit as st
+from google.oauth2.service_account import Credentials
 
 # ============================================================================
 # CONFIGURACIÓN INICIAL DE GOOGLE SHEETS
 # ============================================================================
 
-try:
-    # Configurar autenticación con gspread y Streamlit secrets
-    credentials_dict = dict(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
-    
-    # Asegurar que la private key tenga formato correcto
-    if 'private_key' in credentials_dict:
-        credentials_dict['private_key'] = credentials_dict['private_key'].replace('\\n', '\n')
-    
-    # Autenticar usando gspread
-    gc = gspread.service_account_from_dict(credentials_dict)
-    
-    # IDs de las hojas
-    SHEET_ID = "1Z16IVvPiDIZ8UsNRSiAGX5eccW-ktoWXrZaxSRnGx4Y"
-    
-    # Acceder a las hojas
-    sheet_inventario = gc.open_by_key(SHEET_ID).worksheet("Inventario")
-    sheet_log = gc.open_by_key(SHEET_ID).worksheet("Log")
-    
-    st.success("✅ Conectado exitosamente a Google Sheets")
-    
-except Exception as e:
-    st.error(f"❌ Error de conexión a Google Sheets: {e}")
+@st.cache_resource
+def conectar_google_sheets():
+    """Conexión mejorada a Google Sheets con manejo de errores"""
+    try:
+        # Obtener credenciales desde secrets
+        credentials_dict = dict(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+        
+        # Definir los scopes necesarios
+        scopes = [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ]
+        
+        # Crear credenciales usando google-auth
+        credentials = Credentials.from_service_account_info(
+            credentials_dict,
+            scopes=scopes
+        )
+        
+        # Autenticar con gspread
+        gc = gspread.authorize(credentials)
+        
+        # IDs de las hojas
+        SHEET_ID = "1Z16IVvPiDIZ8UsNRSiAGX5eccW-ktoWXrZaxSRnGx4Y"
+        
+        # Acceder a las hojas
+        sheet_inventario = gc.open_by_key(SHEET_ID).worksheet("Inventario")
+        sheet_log = gc.open_by_key(SHEET_ID).worksheet("Log")
+        
+        return gc, sheet_inventario, sheet_log, None
+        
+    except Exception as e:
+        return None, None, None, str(e)
+
+# Intentar conexión
+gc, sheet_inventario, sheet_log, error = conectar_google_sheets()
+
+if error:
+    st.error(f"❌ Error de conexión a Google Sheets: {error}")
+    st.info("🔍 Pasos para solucionar:")
+    st.markdown("""
+    1. Verifica que tu archivo `.streamlit/secrets.toml` tenga el formato correcto
+    2. Asegúrate de haber compartido la hoja con: `streamlitinventario@inventariostreamlit-474015.iam.gserviceaccount.com`
+    3. Dale permisos de EDITOR a ese correo
+    4. Verifica que el SHEET_ID sea correcto: `1Z16IVvPiDIZ8UsNRSiAGX5eccW-ktoWXrZaxSRnGx4Y`
+    """)
     st.stop()
+else:
+    st.success("✅ Conectado exitosamente a Google Sheets")
 
 # ============================================================================
 # CONFIGURACIÓN DE STREAMLIT
@@ -67,7 +94,7 @@ class SistemaInventarioReactivos:
             else:
                 self.crear_inventario_inicial()
         except Exception as e:
-            st.error(f"Error al cargar inventario desde Sheets: {e}")
+            st.warning(f"Creando inventario inicial... ({e})")
             self.crear_inventario_inicial()
         
         try:
@@ -77,7 +104,7 @@ class SistemaInventarioReactivos:
             else:
                 self.crear_log_inicial()
         except Exception as e:
-            st.error(f"Error al cargar log desde Sheets: {e}")
+            st.warning(f"Creando log inicial... ({e})")
             self.crear_log_inicial()
     
     # ---------------------------
@@ -129,7 +156,7 @@ class SistemaInventarioReactivos:
             # Convertir DataFrame a lista para Google Sheets
             data = [self.df_inventario.columns.tolist()] + self.df_inventario.values.tolist()
             sheet_inventario.clear()
-            sheet_inventario.update(data, value_input_option='RAW')
+            sheet_inventario.update(range_name='A1', values=data, value_input_option='RAW')
             return True
         except Exception as e:
             st.error(f"Error al guardar inventario en Sheets: {e}")
@@ -140,7 +167,7 @@ class SistemaInventarioReactivos:
             if len(self.df_log) > 0:
                 data = [self.df_log.columns.tolist()] + self.df_log.values.tolist()
                 sheet_log.clear()
-                sheet_log.update(data, value_input_option='RAW')
+                sheet_log.update(range_name='A1', values=data, value_input_option='RAW')
             return True
         except Exception as e:
             st.error(f"Error al guardar log en Sheets: {e}")
@@ -325,7 +352,7 @@ def main():
     inicializar_sistema()
     sistema = st.session_state.sistema
 
-    st.title("🧪 Sistema de Inventario de Reactivos Químicos (Sheets)")
+    st.title("🧪 Sistema de Inventario de Reactivos Químicos")
     st.markdown("---")
 
     menu = st.sidebar.radio(
