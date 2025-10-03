@@ -1,25 +1,35 @@
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+import pandas as pd
+from datetime import datetime, timedelta
 import streamlit as st
 
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
+# ============================================================================
+# CONFIGURACIÓN INICIAL DE GOOGLE SHEETS
+# ============================================================================
 
-# st.secrets["GOOGLE_SERVICE_ACCOUNT"] ya es un diccionario
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    st.secrets["GOOGLE_SERVICE_ACCOUNT"],  # PASAR DIRECTO
-    SCOPES
-)
-
-client = gspread.authorize(creds)
-
-SHEET_ID = "1Z16IVvPiDIZ8UsNRSiAGX5eccW-ktoWXrZaxSRnGx4Y"
-
-sheet_inventario = client.open_by_key(SHEET_ID).worksheet("Inventario")
-sheet_log = client.open_by_key(SHEET_ID).worksheet("Log")
-
+try:
+    # Configurar autenticación con gspread y Streamlit secrets
+    credentials_dict = dict(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+    
+    # Asegurar que la private key tenga formato correcto
+    if 'private_key' in credentials_dict:
+        credentials_dict['private_key'] = credentials_dict['private_key'].replace('\\n', '\n')
+    
+    # Autenticar usando gspread
+    gc = gspread.service_account_from_dict(credentials_dict)
+    
+    # IDs de las hojas
+    SHEET_ID = "1Z16IVvPiDIZ8UsNRSiAGX5eccW-ktoWXrZaxSRnGx4Y"
+    
+    # Acceder a las hojas
+    sheet_inventario = gc.open_by_key(SHEET_ID).worksheet("Inventario")
+    sheet_log = gc.open_by_key(SHEET_ID).worksheet("Log")
+    
+    st.success("✅ Conectado exitosamente a Google Sheets")
+    
+except Exception as e:
+    st.error(f"❌ Error de conexión a Google Sheets: {e}")
+    st.stop()
 
 # ============================================================================
 # CONFIGURACIÓN DE STREAMLIT
@@ -31,8 +41,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-st.title("🧪 Sistema de Inventario de Reactivos Químicos (Sheets)")
 
 # ============================================================================
 # CLASE PRINCIPAL DEL SISTEMA
@@ -54,14 +62,20 @@ class SistemaInventarioReactivos:
         """Carga datos desde Google Sheets"""
         try:
             inventario_data = sheet_inventario.get_all_records()
-            self.df_inventario = pd.DataFrame(inventario_data)
+            if inventario_data:
+                self.df_inventario = pd.DataFrame(inventario_data)
+            else:
+                self.crear_inventario_inicial()
         except Exception as e:
             st.error(f"Error al cargar inventario desde Sheets: {e}")
             self.crear_inventario_inicial()
         
         try:
             log_data = sheet_log.get_all_records()
-            self.df_log = pd.DataFrame(log_data)
+            if log_data:
+                self.df_log = pd.DataFrame(log_data)
+            else:
+                self.crear_log_inicial()
         except Exception as e:
             st.error(f"Error al cargar log desde Sheets: {e}")
             self.crear_log_inicial()
@@ -112,8 +126,10 @@ class SistemaInventarioReactivos:
     
     def guardar_inventario(self):
         try:
+            # Convertir DataFrame a lista para Google Sheets
+            data = [self.df_inventario.columns.tolist()] + self.df_inventario.values.tolist()
             sheet_inventario.clear()
-            sheet_inventario.update([self.df_inventario.columns.tolist()] + self.df_inventario.values.tolist())
+            sheet_inventario.update(data, value_input_option='RAW')
             return True
         except Exception as e:
             st.error(f"Error al guardar inventario en Sheets: {e}")
@@ -121,8 +137,10 @@ class SistemaInventarioReactivos:
     
     def guardar_log(self):
         try:
-            sheet_log.clear()
-            sheet_log.update([self.df_log.columns.tolist()] + self.df_log.values.tolist())
+            if len(self.df_log) > 0:
+                data = [self.df_log.columns.tolist()] + self.df_log.values.tolist()
+                sheet_log.clear()
+                sheet_log.update(data, value_input_option='RAW')
             return True
         except Exception as e:
             st.error(f"Error al guardar log en Sheets: {e}")
@@ -133,8 +151,12 @@ class SistemaInventarioReactivos:
     # ---------------------------
     
     def buscar_reactivo(self, termino_busqueda):
+        if self.df_inventario is None or self.df_inventario.empty:
+            return pd.DataFrame()
+            
         if termino_busqueda.strip() == "":
             return self.df_inventario
+            
         mascara = self.df_inventario['Reactivo'].str.contains(termino_busqueda, case=False, na=False)
         return self.df_inventario[mascara]
     
@@ -143,18 +165,21 @@ class SistemaInventarioReactivos:
     # ---------------------------
     
     def registrar_salida(self, nombre_reactivo, cantidad, usuario, proyecto_curso, notas=""):
+        if self.df_inventario is None or self.df_inventario.empty:
+            return False, "No hay inventario cargado"
+            
         mascara = self.df_inventario['Reactivo'] == nombre_reactivo
         if not mascara.any():
             return False, f"Reactivo '{nombre_reactivo}' no encontrado"
         
         idx = self.df_inventario[mascara].index[0]
-        cantidad_actual = self.df_inventario.loc[idx, 'Cantidad']
+        cantidad_actual = float(self.df_inventario.loc[idx, 'Cantidad'])
         unidad = self.df_inventario.loc[idx, 'Unidad']
         
         if cantidad > cantidad_actual:
             return False, f"Stock insuficiente. Disponible: {cantidad_actual} {unidad}"
         
-        self.df_inventario.loc[idx, 'Cantidad'] -= cantidad
+        self.df_inventario.loc[idx, 'Cantidad'] = cantidad_actual - cantidad
         if self.df_inventario.loc[idx, 'Cantidad'] == 0:
             self.df_inventario.loc[idx, 'Estado'] = 'agotado'
         
@@ -170,7 +195,13 @@ class SistemaInventarioReactivos:
             'ProyectoCurso': proyecto_curso,
             'Notas': notas
         }
-        self.df_log = pd.concat([self.df_log, pd.DataFrame([nuevo_movimiento])], ignore_index=True)
+        
+        # Actualizar log
+        nuevo_df = pd.DataFrame([nuevo_movimiento])
+        if self.df_log is None or self.df_log.empty:
+            self.df_log = nuevo_df
+        else:
+            self.df_log = pd.concat([self.df_log, nuevo_df], ignore_index=True)
         
         self.guardar_inventario()
         self.guardar_log()
@@ -178,10 +209,15 @@ class SistemaInventarioReactivos:
     
     def registrar_entrada(self, nombre_reactivo, cantidad, usuario, proyecto_curso, 
                            unidad='L', fecha_vencimiento=None, notas=""):
-        mascara = self.df_inventario['Reactivo'] == nombre_reactivo
+        if self.df_inventario is None:
+            self.df_inventario = pd.DataFrame()
+            
+        mascara = self.df_inventario['Reactivo'] == nombre_reactivo if not self.df_inventario.empty else pd.Series([], dtype=bool)
+        
         if mascara.any():
             idx = self.df_inventario[mascara].index[0]
-            self.df_inventario.loc[idx, 'Cantidad'] += cantidad
+            cantidad_actual = float(self.df_inventario.loc[idx, 'Cantidad'])
+            self.df_inventario.loc[idx, 'Cantidad'] = cantidad_actual + cantidad
             if self.df_inventario.loc[idx, 'Estado'] == 'agotado':
                 self.df_inventario.loc[idx, 'Estado'] = 'disponible'
             if fecha_vencimiento:
@@ -191,6 +227,7 @@ class SistemaInventarioReactivos:
         else:
             if not fecha_vencimiento:
                 fecha_vencimiento = (datetime.now() + timedelta(days=365)).strftime('%Y-%m-%d')
+                
             nuevo_reactivo = {
                 'Reactivo': nombre_reactivo,
                 'Cantidad': cantidad,
@@ -200,7 +237,13 @@ class SistemaInventarioReactivos:
                 'FechaIngreso': datetime.now().strftime('%Y-%m-%d'),
                 'Notas': notas
             }
-            self.df_inventario = pd.concat([self.df_inventario, pd.DataFrame([nuevo_reactivo])], ignore_index=True)
+            
+            nuevo_df = pd.DataFrame([nuevo_reactivo])
+            if self.df_inventario is None or self.df_inventario.empty:
+                self.df_inventario = nuevo_df
+            else:
+                self.df_inventario = pd.concat([self.df_inventario, nuevo_df], ignore_index=True)
+                
             mensaje = f"Nuevo reactivo agregado: {cantidad} {unidad} de {nombre_reactivo}"
         
         ahora = datetime.now()
@@ -215,7 +258,13 @@ class SistemaInventarioReactivos:
             'ProyectoCurso': proyecto_curso,
             'Notas': notas
         }
-        self.df_log = pd.concat([self.df_log, pd.DataFrame([nuevo_movimiento])], ignore_index=True)
+        
+        # Actualizar log
+        nuevo_log_df = pd.DataFrame([nuevo_movimiento])
+        if self.df_log is None or self.df_log.empty:
+            self.df_log = nuevo_log_df
+        else:
+            self.df_log = pd.concat([self.df_log, nuevo_log_df], ignore_index=True)
         
         self.guardar_inventario()
         self.guardar_log()
@@ -226,18 +275,30 @@ class SistemaInventarioReactivos:
     # ---------------------------
     
     def verificar_vencimientos(self, dias_alerta=30):
-        hoy = datetime.now()
-        fecha_limite = hoy + timedelta(days=dias_alerta)
-        self.df_inventario['FechaVencimiento'] = pd.to_datetime(self.df_inventario['FechaVencimiento'])
-        vencidos = self.df_inventario[self.df_inventario['FechaVencimiento'] < hoy]
-        proximos_vencer = self.df_inventario[(self.df_inventario['FechaVencimiento'] >= hoy) &
-                                             (self.df_inventario['FechaVencimiento'] <= fecha_limite)]
-        return {'vencidos': vencidos, 'proximos_vencer': proximos_vencer}
+        if self.df_inventario is None or self.df_inventario.empty:
+            return {'vencidos': pd.DataFrame(), 'proximos_vencer': pd.DataFrame()}
+            
+        try:
+            hoy = datetime.now()
+            fecha_limite = hoy + timedelta(days=dias_alerta)
+            self.df_inventario['FechaVencimiento'] = pd.to_datetime(self.df_inventario['FechaVencimiento'], errors='coerce')
+            vencidos = self.df_inventario[self.df_inventario['FechaVencimiento'] < hoy]
+            proximos_vencer = self.df_inventario[(self.df_inventario['FechaVencimiento'] >= hoy) &
+                                                 (self.df_inventario['FechaVencimiento'] <= fecha_limite)]
+            return {'vencidos': vencidos, 'proximos_vencer': proximos_vencer}
+        except:
+            return {'vencidos': pd.DataFrame(), 'proximos_vencer': pd.DataFrame()}
     
     def generar_reporte_stock(self):
+        if self.df_inventario is None or self.df_inventario.empty:
+            return {
+                'total': 0, 'disponibles': 0, 'en_uso': 0, 
+                'vencidos': 0, 'proximos_vencer': 0, 'vencimientos': {'vencidos': pd.DataFrame(), 'proximos_vencer': pd.DataFrame()}
+            }
+            
         total_reactivos = len(self.df_inventario)
-        disponibles = len(self.df_inventario[self.df_inventario['Estado'] == 'disponible'])
-        en_uso = len(self.df_inventario[self.df_inventario['Estado'] == 'en uso'])
+        disponibles = len(self.df_inventario[self.df_inventario['Estado'] == 'disponible']) if 'Estado' in self.df_inventario.columns else 0
+        en_uso = len(self.df_inventario[self.df_inventario['Estado'] == 'en uso']) if 'Estado' in self.df_inventario.columns else 0
         vencimientos = self.verificar_vencimientos()
         return {
             'total': total_reactivos,
@@ -279,17 +340,24 @@ def main():
 
     if menu == "📦 Inventario":
         st.header("Inventario de Reactivos")
-        busqueda = st.text_input("🔍 Buscar reactivo por nombre:", "")
-        df_mostrar = sistema.buscar_reactivo(busqueda)
-        if len(df_mostrar) > 0:
-            def colorear_estado(val):
-                if val == 'disponible': return 'background-color: #d5f4e6'
-                elif val == 'en uso': return 'background-color: #fff3cd'
-                elif val == 'agotado': return 'background-color: #fadbd8'
-                return ''
-            st.dataframe(df_mostrar.style.applymap(colorear_estado, subset=['Estado']), use_container_width=True, height=400)
+        
+        if sistema.df_inventario is not None and not sistema.df_inventario.empty:
+            busqueda = st.text_input("🔍 Buscar reactivo por nombre:", "")
+            df_mostrar = sistema.buscar_reactivo(busqueda)
+            
+            if len(df_mostrar) > 0:
+                def colorear_estado(val):
+                    if val == 'disponible': return 'background-color: #d5f4e6'
+                    elif val == 'en uso': return 'background-color: #fff3cd'
+                    elif val == 'agotado': return 'background-color: #fadbd8'
+                    return ''
+                
+                st.dataframe(df_mostrar.style.applymap(colorear_estado, subset=['Estado']), 
+                           use_container_width=True, height=400)
+            else:
+                st.warning("No se encontraron reactivos.")
         else:
-            st.warning("No se encontraron reactivos.")
+            st.warning("No hay datos de inventario disponibles.")
 
     elif menu == "➕ Nueva Entrada":
         st.header("Registrar Nueva Entrada")
@@ -297,7 +365,7 @@ def main():
             col1, col2 = st.columns(2)
             with col1:
                 nombre = st.text_input("Nombre del Reactivo *")
-                cantidad = st.number_input("Cantidad *", min_value=0.0, step=0.1)
+                cantidad = st.number_input("Cantidad *", min_value=0.0, step=0.1, format="%.2f")
                 unidad = st.selectbox("Unidad", ["L", "kg", "g", "mL"])
                 usuario = st.text_input("Usuario *")
             with col2:
@@ -311,8 +379,10 @@ def main():
                 elif cantidad <= 0:
                     st.error("La cantidad debe ser mayor a 0")
                 else:
-                    exito, mensaje = sistema.registrar_entrada(nombre, cantidad, usuario, proyecto,
-                                                               unidad, fecha_venc.strftime('%Y-%m-%d'), notas)
+                    exito, mensaje = sistema.registrar_entrada(
+                        nombre, cantidad, usuario, proyecto, unidad, 
+                        fecha_venc.strftime('%Y-%m-%d'), notas
+                    )
                     if exito:
                         st.success(mensaje)
                         st.balloons()
@@ -321,54 +391,66 @@ def main():
 
     elif menu == "➖ Registrar Salida":
         st.header("Registrar Salida de Reactivo")
-        with st.form("form_salida"):
-            col1, col2 = st.columns(2)
-            with col1:
-                nombres_reactivos = sistema.df_inventario['Reactivo'].tolist()
-                nombre_sel = st.selectbox("Seleccione el Reactivo *", nombres_reactivos)
-                if nombre_sel:
-                    info = sistema.df_inventario[sistema.df_inventario['Reactivo'] == nombre_sel].iloc[0]
-                    st.info(f"Stock disponible: {info['Cantidad']:.2f} {info['Unidad']}")
-                cantidad = st.number_input("Cantidad a retirar *", min_value=0.0, step=0.1)
-            with col2:
-                usuario = st.text_input("Usuario que solicita *")
-                proyecto = st.text_input("Proyecto/Curso *")
-                notas = st.text_area("Notas", height=100)
-            submitted = st.form_submit_button("✅ Registrar Salida", use_container_width=True)
-            if submitted:
-                if not usuario or not proyecto:
-                    st.error("Complete todos los campos obligatorios (*)")
-                elif cantidad <= 0:
-                    st.error("La cantidad debe ser mayor a 0")
-                else:
-                    exito, mensaje = sistema.registrar_salida(nombre_sel, cantidad, usuario, proyecto, notas)
-                    if exito:
-                        st.success(mensaje)
+        
+        if sistema.df_inventario is not None and not sistema.df_inventario.empty:
+            with st.form("form_salida"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    nombres_reactivos = sistema.df_inventario['Reactivo'].tolist()
+                    nombre_sel = st.selectbox("Seleccione el Reactivo *", nombres_reactivos)
+                    if nombre_sel:
+                        info = sistema.df_inventario[sistema.df_inventario['Reactivo'] == nombre_sel].iloc[0]
+                        st.info(f"Stock disponible: {info['Cantidad']:.2f} {info['Unidad']}")
+                    cantidad = st.number_input("Cantidad a retirar *", min_value=0.0, step=0.1, format="%.2f")
+                with col2:
+                    usuario = st.text_input("Usuario que solicita *")
+                    proyecto = st.text_input("Proyecto/Curso *")
+                    notas = st.text_area("Notas", height=100)
+                submitted = st.form_submit_button("✅ Registrar Salida", use_container_width=True)
+                if submitted:
+                    if not usuario or not proyecto:
+                        st.error("Complete todos los campos obligatorios (*)")
+                    elif cantidad <= 0:
+                        st.error("La cantidad debe ser mayor a 0")
                     else:
-                        st.error(mensaje)
+                        exito, mensaje = sistema.registrar_salida(nombre_sel, cantidad, usuario, proyecto, notas)
+                        if exito:
+                            st.success(mensaje)
+                        else:
+                            st.error(mensaje)
+        else:
+            st.warning("No hay reactivos disponibles en el inventario.")
 
     elif menu == "📋 Movimientos":
         st.header("Historial de Movimientos")
-        if len(sistema.df_log) > 0:
+        if sistema.df_log is not None and len(sistema.df_log) > 0:
             df_movimientos = sistema.df_log.tail(100).iloc[::-1]
             def colorear_tipo(val):
                 if val == 'ENTRADA': return 'background-color: #d5f4e6'
                 elif val == 'SALIDA': return 'background-color: #fadbd8'
                 return ''
-            st.dataframe(df_movimientos.style.applymap(colorear_tipo, subset=['TipoMovimiento']), use_container_width=True, height=500)
+            st.dataframe(df_movimientos.style.applymap(colorear_tipo, subset=['TipoMovimiento']), 
+                       use_container_width=True, height=500)
         else:
             st.info("No hay movimientos registrados todavía")
 
     elif menu == "⚠️ Alertas":
         st.header("Alertas y Advertencias")
         vencimientos = sistema.verificar_vencimientos(dias_alerta=30)
+        
         if len(vencimientos['vencidos']) > 0:
             st.error(f"🔴 REACTIVOS VENCIDOS: {len(vencimientos['vencidos'])}")
+            st.dataframe(vencimientos['vencidos'][['Reactivo', 'Cantidad', 'Unidad', 'FechaVencimiento']])
+        
         if len(vencimientos['proximos_vencer']) > 0:
             st.warning(f"🟡 PRÓXIMOS A VENCER (30 días): {len(vencimientos['proximos_vencer'])}")
-        bajo_stock = sistema.df_inventario[sistema.df_inventario['Cantidad'] < 1]
-        if len(bajo_stock) > 0:
-            st.warning(f"🟠 STOCK BAJO (< 1 unidad): {len(bajo_stock)}")
+            st.dataframe(vencimientos['proximos_vencer'][['Reactivo', 'Cantidad', 'Unidad', 'FechaVencimiento']])
+        
+        if sistema.df_inventario is not None and not sistema.df_inventario.empty:
+            bajo_stock = sistema.df_inventario[sistema.df_inventario['Cantidad'] < 1]
+            if len(bajo_stock) > 0:
+                st.warning(f"🟠 STOCK BAJO (< 1 unidad): {len(bajo_stock)}")
+                st.dataframe(bajo_stock[['Reactivo', 'Cantidad', 'Unidad']])
 
     elif menu == "📊 Reportes":
         st.header("Reportes del Sistema")
