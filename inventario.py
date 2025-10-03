@@ -8,7 +8,6 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets',
 
 # Cargar credenciales desde Streamlit Secrets
 service_account_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT'])
-creds = ServiceAccountCredentials.from_json_keyfile_dict(service_account_info, SCOPES)
 
 # Conectar con Google Sheets
 SHEET_ID = "1Z16IVvPiDIZ8UsNRSiAGX5eccW-ktoWXrZaxSRnGx4Y"
