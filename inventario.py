@@ -2,31 +2,24 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
 
-# ============================================================================
-# CONFIGURACIÓN DE GOOGLE SHEETS
-# ============================================================================
-
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-# Autenticación usando secretos de Streamlit (st.secrets)
-# Asegúrate que GOOGLE_SERVICE_ACCOUNT esté definido correctamente en tu secrets.toml
+# st.secrets["GOOGLE_SERVICE_ACCOUNT"] ya es un diccionario
 creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    dict(st.secrets["GOOGLE_SERVICE_ACCOUNT"]),
+    st.secrets["GOOGLE_SERVICE_ACCOUNT"],  # PASAR DIRECTO
     SCOPES
 )
 
-# Cliente de gspread autorizado
 client = gspread.authorize(creds)
 
-# ID de la hoja de cálculo
 SHEET_ID = "1Z16IVvPiDIZ8UsNRSiAGX5eccW-ktoWXrZaxSRnGx4Y"
 
-# Abrir hojas
 sheet_inventario = client.open_by_key(SHEET_ID).worksheet("Inventario")
 sheet_log = client.open_by_key(SHEET_ID).worksheet("Log")
+
 
 # ============================================================================
 # CONFIGURACIÓN DE STREAMLIT
