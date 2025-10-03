@@ -1,10 +1,14 @@
 import os
 import json
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import streamlit as st
 import pandas as pd
+import streamlit as st
+import gspread
 from datetime import datetime, timedelta
+from oauth2client.service_account import ServiceAccountCredentials
+
+# ============================================================================
+# GOOGLE SHEETS - CREDENCIALES
+# ============================================================================
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -386,4 +390,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-  
