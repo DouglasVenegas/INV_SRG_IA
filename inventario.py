@@ -1,20 +1,24 @@
-import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
+
+# ============================================================================
+# CONFIGURACIÓN DE GOOGLE SHEETS
+# ============================================================================
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-# Cargar credenciales desde Streamlit secrets
-service_account_info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+# Autenticación usando secretos de Streamlit (st.secrets)
+# Asegúrate que GOOGLE_SERVICE_ACCOUNT esté definido correctamente en tu secrets.toml
+creds = ServiceAccountCredentials.from_json_keyfile_dict(
+    dict(st.secrets["GOOGLE_SERVICE_ACCOUNT"]),
+    SCOPES
+)
 
-# Crear credenciales
-creds = ServiceAccountCredentials.from_json_keyfile_dict(service_account_info, SCOPES)
-
-# Autorizar cliente gspread
+# Cliente de gspread autorizado
 client = gspread.authorize(creds)
 
 # ID de la hoja de cálculo
@@ -34,6 +38,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+st.title("🧪 Sistema de Inventario de Reactivos Químicos (Sheets)")
 
 # ============================================================================
 # CLASE PRINCIPAL DEL SISTEMA
