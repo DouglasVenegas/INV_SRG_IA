@@ -1,27 +1,20 @@
-import os
 import json
-import pandas as pd
-import streamlit as st
 import gspread
-from datetime import datetime, timedelta
 from oauth2client.service_account import ServiceAccountCredentials
-
-# ============================================================================
-# GOOGLE SHEETS - CREDENCIALES
-# ============================================================================
+import streamlit as st
 
 SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
 ]
 
-# Cargar credenciales desde Streamlit Secrets
-service_account_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT'])
+# Cargar credenciales desde Streamlit secrets
+service_account_info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
 
-# Crear credenciales a partir del diccionario
+# Crear credenciales
 creds = ServiceAccountCredentials.from_json_keyfile_dict(service_account_info, SCOPES)
 
-# Autorizar cliente de gspread
+# Autorizar cliente gspread
 client = gspread.authorize(creds)
 
 # ID de la hoja de cálculo
