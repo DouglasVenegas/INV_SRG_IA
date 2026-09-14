@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laboratorio 3D</title>
+<style>
+  :root{--bg:#eef0f3;--panel:#ffffffcc;--ink:#2b3440;--muted:#6b7683;--line:#d7dbe0;--accent:#4a6fa5}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  #app{position:fixed;inset:0} canvas{display:block;touch-action:none}
+  .ui{position:absolute;top:16px;left:16px;width:min(340px,calc(100% - 32px));
+    background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--line);
+    border-radius:14px;padding:14px;box-shadow:0 6px 24px #0f111514}
+  .ui h1{font-size:12px;letter-spacing:.03em;margin:0 0 10px;font-weight:600;color:var(--muted);text-transform:uppercase}
+  .row{display:flex;gap:8px}
+  input{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:16px;color:var(--ink);background:#fff;outline:none}
+  input:focus{border-color:var(--accent)}
+  button{border:none;border-radius:10px;padding:10px 12px;font-size:14px;background:var(--accent);color:#fff;cursor:pointer;font-weight:600}
+  button.ghost{background:#eef1f4;color:var(--ink);width:100%;margin-top:8px}
+  .hint{font-size:12px;color:var(--muted);margin-top:9px;line-height:1.55}
+  .toast{position:absolute;bottom:22px;left:50%;transform:translateX(-50%) translateY(12px);
+    background:var(--ink);color:#fff;padding:9px 16px;border-radius:999px;font-size:14px;opacity:0;transition:.35s;pointer-events:none;white-space:nowrap}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)} .toast b{color:#ffd7c4}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="ui">
+  <h1>Buscar en el laboratorio</h1>
+  <div class="row">
+    <input id="q" list="items" placeholder="p. ej. AG5, F7, rotavapor" autocomplete="off">
+    <button id="go">Ir</button>
+  </div>
+  <datalist id="items"></datalist>
+  <button id="reset" class="ghost">Vista panorámica</button>
+  <div class="hint">1 dedo / arrastrar: orbitar · 2 dedos / rueda: zoom. Medidas provisionales (12×8×3 m).</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const V3 = THREE.Vector3;
+const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xeef0f3);
+scene.fog = new THREE.Fog(0xeef0f3, 28, 54);
+const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.1, 400);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+document.getElementById('app').appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0xb9c1cc,0.98));
+const dl=new THREE.DirectionalLight(0xffffff,0.5); dl.position.set(6,16,10); scene.add(dl);
+const dl2=new THREE.DirectionalLight(0xffffff,0.25); dl2.position.set(-12,10,-4); scene.add(dl2);
+
+const add = m => { scene.add(m); return m; };
+const mat = c => new THREE.MeshStandardMaterial({color:c,roughness:0.85,metalness:0.05});
+const box = (w,h,d,c,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c));m.position.set(x,y,z);return add(m);};
+function segBox(x1,z1,x2,z2,h,y,depth,c){
+  const dx=x2-x1,dz=z2-z1,L=Math.hypot(dx,dz);
+  const m=new THREE.Mesh(new THREE.BoxGeometry(L,h,depth),mat(c));
+  m.position.set((x1+x2)/2,y,(z1+z2)/2); m.rotation.y=Math.atan2(-dz,dx); return add(m);
+}
+function wallSeg(x1,z1,x2,z2,h,tx,tz){
+  const dx=x2-x1,dz=z2-z1,L=Math.hypot(dx,dz);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(L,h),
+    new THREE.MeshStandardMaterial({color:0xeef1f4,side:THREE.FrontSide,roughness:0.95}));
+  m.position.set((x1+x2)/2,h/2,(z1+z2)/2);
+  let phi=Math.atan2(-dz,dx), nx=Math.sin(phi), nz=Math.cos(phi);
+  if((tx-(x1+x2)/2)*nx+(tz-(z1+z2)/2)*nz<0) phi+=Math.PI;
+  m.rotation.y=phi; return add(m);
+}
+
+const C={floor:0xdfe3e8,annex:0xe7ebef,top:0xc4ccd4,body:0xaeb6bf,drawer:0x9aa4ad,
+  shelf:0xcdd4db,equip:0x4a6fa5,equipL:0xdbe4ee,safe:0xe08a5d,foss:0x6e8ba8,capilla:0xe9edf1,wood:0xb08a5f};
+
+box(12,0.1,8,C.floor,0,-0.05,0);
+const Vann=[[-6,-2.5],[-8.2,-1.8],[-9,-0.6],[-9,0.6],[-8.2,1.8],[-6,2.5]];
+const CN=[-7.9,0];
+(()=>{const s=new THREE.Shape();s.moveTo(Vann[0][0],Vann[0][1]);
+  for(let i=1;i<Vann.length;i++)s.lineTo(Vann[i][0],Vann[i][1]);s.closePath();
+  const m=new THREE.Mesh(new THREE.ShapeGeometry(s),
+    new THREE.MeshStandardMaterial({color:C.annex,side:THREE.DoubleSide,roughness:0.9}));
+  m.rotation.x=Math.PI/2; m.position.y=0.002; add(m);})();
+
+wallSeg(-6,-4,6,-4,3,0,0);
+wallSeg(-6,4,6,4,3,0,0);
+wallSeg(6,-4,6,3,3,0,0);
+wallSeg(-6,-4,-6,-2.5,3,0,0);
+wallSeg(-6,3.4,-6,4,3,0,0);
+for(let i=0;i<5;i++) wallSeg(Vann[i][0],Vann[i][1],Vann[i+1][0],Vann[i+1][1],3,-7.9,0);
+
+box(11,0.9,1.2,C.body,0,0.45,-3.4);
+box(11,0.1,1.2,C.top,0,0.95,-3.4);
+const EQ=[["XRF",-5,1.0,0.7],["Estufa vacío",-3.6,0.55,0.6],["Estufa",-2.15,0.6,0.6],
+  ["Centrífuga",-0.7,0.55,0.7],["Rotavapor",0.7,0.7,0.5],["Soxhlet",2.15,0.75,0.5],
+  ["Mufla",3.6,0.65,0.7],["Lactoscan",5,0.5,0.5]];
+EQ.forEach(e=>box(0.8,e[2],e[3],C.equip,e[1],0.95+e[2]/2,-3.4));
+
+[-3,-1,1,3].forEach(cx=>{
+  box(0.9,0.1,3.0,C.top,cx,0.9,0);
+  box(0.8,0.85,2.9,C.body,cx,0.45,0);
+  [-1,0,1].forEach(zc=>{
+    [-0.47,0.47].forEach(sx=>{
+      box(0.05,0.22,0.75,C.drawer,cx+sx,0.74,zc);
+      box(0.05,0.40,0.75,C.drawer,cx+sx,0.42,zc);
+    });
+  });
+  box(0.05,1.3,0.05,C.body,cx,1.4,-1.45); box(0.05,1.3,0.05,C.body,cx,1.4,1.45);
+  box(0.5,0.05,3.0,C.shelf,cx,1.78,0); box(0.5,0.05,3.0,C.shelf,cx,2.12,0);
+});
+
+box(1.2,2.6,1.3,C.capilla,5.35,1.3,1); box(1.15,1.4,0.06,0x9fb4cf,4.85,1.45,1);
+box(0.8,1.6,0.7,C.foss,5.55,0.8,-1);
+box(1.0,2.1,0.6,C.drawer,5.5,1.05,-3);
+box(0.1,2.2,1.0,C.body,6,1.1,3.5); box(0.1,0.3,0.6,0x2f8f5e,5.95,2.35,3.5);
+
+box(2.0,1.2,0.06,0x2b3440,-4,1.4,3.9);
+box(0.15,1.9,0.15,C.safe,-2,0.95,3.62); box(0.6,0.12,0.4,C.safe,-2,1.02,3.55);
+box(0.45,0.05,0.45,C.safe,-2,2.0,3.62);
+box(1.0,1.9,0.8,C.equipL,1,0.95,3.55);
+box(1.0,1.9,0.8,C.equipL,3,0.95,3.55);
+
+box(0.1,2.2,0.1,C.body,-6,1.1,2.5); box(0.1,2.2,0.1,C.body,-6,1.1,3.4);
+box(0.1,0.15,0.9,C.body,-6,2.15,2.95);
+const leaf=box(0.05,2.0,0.85,C.wood,-5.62,1.0,2.72); leaf.rotation.y=0.5;
+
+for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1];
+  segBox(a[0],a[1],b[0],b[1],0.9,0.45,0.5,C.body);
+  segBox(a[0],a[1],b[0],b[1],0.08,0.9,0.55,C.top);}
+segBox(Vann[1][0],Vann[1][1],Vann[2][0],Vann[2][1],0.6,1.8,0.4,C.shelf);
+segBox(Vann[3][0],Vann[3][1],Vann[4][0],Vann[4][1],0.6,1.8,0.4,C.shelf);
+[[-7.25,-1.75],[-8.4,-1.0],[-8.6,0],[-8.4,1.0],[-7.25,1.75]].forEach(p=>
+  box(0.6,0.5,0.5,C.equip,p[0],1.15,p[1]));
+
+const ITEMS=[
+  {label:"XRF (fluorescencia)",words:["xrf","rayos x","fluorescencia"],focus:[-5,1.15,-3.4],marker:[1.0,1.0,0.9]},
+  {label:"Estufa al vacío",words:["estufa vacio","vacio"],focus:[-3.6,1.1,-3.4],marker:[0.9,0.9,0.8]},
+  {label:"Estufa",words:["estufa"],focus:[-2.15,1.1,-3.4],marker:[0.9,0.9,0.8]},
+  {label:"Centrífuga",words:["centrifuga"],focus:[-0.7,1.1,-3.4],marker:[0.9,0.9,0.9]},
+  {label:"Rotavapor",words:["rotavapor"],focus:[0.7,1.2,-3.4],marker:[0.9,1.0,0.8]},
+  {label:"Soxhlet",words:["soxhlet","soxleth"],focus:[2.15,1.2,-3.4],marker:[0.9,1.0,0.8]},
+  {label:"Mufla",words:["mufla"],focus:[3.6,1.2,-3.4],marker:[0.9,1.0,0.9]},
+  {label:"Lactoscan",words:["lactoscan","leche"],focus:[5,1.1,-3.4],marker:[0.8,0.9,0.8]},
+  {label:"Capilla (extracción)",words:["capilla","extraccion","campana"],focus:[5.35,1.5,1],marker:[1.3,2.7,1.4]},
+  {label:"Destilador Foss (Kjeldahl)",words:["foss","kjeldahl","destilador"],focus:[5.55,1.0,-1],marker:[0.9,1.8,0.8]},
+  {label:"Mueble de reactivos",words:["mueble reactivos","reactivos"],focus:[5.5,1.3,-3],marker:[1.1,2.2,0.7]},
+  {label:"Salida de seguridad",words:["salida","seguridad","emergencia","exit"],focus:[6,1.2,3.5],marker:[0.4,2.2,1.1]},
+  {label:"Pizarra",words:["pizarra"],focus:[-4,1.4,3.9],marker:[2.1,1.3,0.2]},
+  {label:"Lavaojos y ducha",words:["lavaojos","ducha","ojos"],focus:[-2,1.4,3.6],marker:[0.7,2.3,0.7]},
+  {label:"Congelador",words:["congelador"],focus:[1,1.1,3.55],marker:[1.1,2.0,0.9]},
+  {label:"Refrigeradora",words:["refri","refrigerador","nevera"],focus:[3,1.1,3.55],marker:[1.1,2.0,0.9]},
+  {label:"Espectrofotómetro 1",words:["espectrofotometro","espectro 1"],focus:[-7.25,1.2,-1.75],marker:[0.8,0.9,0.8],camera:[-7.71,1.5,-0.53]},
+  {label:"Balanzas analíticas",words:["balanza analitica","analiticas"],focus:[-8.4,1.2,-1.0],marker:[0.8,0.9,0.8],camera:[-8.05,1.5,-0.30]},
+  {label:"Balanzas granatarias",words:["granataria","granatarias"],focus:[-8.6,1.2,0],marker:[0.8,0.9,0.8],camera:[-8.11,1.5,0]},
+  {label:"Humedad / aw",words:["humedad","aw","actividad de agua"],focus:[-8.4,1.2,1.0],marker:[0.8,0.9,0.8],camera:[-8.05,1.5,0.30]},
+  {label:"Espectrofotómetro 2",words:["espectro 2"],focus:[-7.25,1.2,1.75],marker:[0.8,0.9,0.8],camera:[-7.71,1.5,0.53]},
+  {label:"Sala de análisis (anexo)",words:["anexo","sala analisis","pentagono"],focus:[-7.9,1,0],marker:[3.2,2.2,4.8],camera:[-4.3,3,0]},
+  {label:"Puerta de entrada",words:["puerta entrada","entrada"],focus:[-6,1.1,2.9],marker:[0.4,2.2,1.0],camera:[-4.4,1.6,2.9]},
+];
+
+// ---------- nomenclatura de almacenamiento (buscable por codigo) ----------
+function annexPoint(t){
+  let segs=[],total=0;
+  for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1];const L=Math.hypot(b[0]-a[0],b[1]-a[1]);segs.push({a,b,L});total+=L;}
+  let d=t*total;
+  for(const s of segs){ if(d<=s.L){const f=d/s.L;return [s.a[0]+(s.b[0]-s.a[0])*f, s.a[1]+(s.b[1]-s.a[1])*f];} d-=s.L; }
+  return Vann[5];
+}
+function facetPts(a,b,n){const r=[];for(let i=0;i<n;i++){const f=(i+0.5)/n;r.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);}return r;}
+function inward(p){const dx=CN[0]-p[0],dz=CN[1]-p[1],L=Math.hypot(dx,dz)||1;return [dx/L,dz/L];}
+const gen=[];
+// Anexo: 9 gavetas AG (arriba) + 9 estantes AE (abajo)
+for(let i=0;i<9;i++){
+  const p=annexPoint((i+0.5)/9), n=inward(p);
+  const fx=p[0]+n[0]*0.15, fz=p[1]+n[1]*0.15, cam=[p[0]+n[0]*1.7,1.5,p[1]+n[1]*1.7];
+  gen.push({label:"AG"+(i+1)+" · gaveta anexo",words:["ag"+(i+1)],focus:[fx,0.72,fz],marker:[0.5,0.28,0.5],camera:cam});
+  gen.push({label:"AE"+(i+1)+" · estante anexo",words:["ae"+(i+1)],focus:[fx,0.4,fz],marker:[0.55,0.5,0.55],camera:cam});
+}
+// Anexo aereos AA: 2 muebles x 4 compartimentos
+[["AA11","AA12","AA21","AA22",Vann[1],Vann[2]],["AA31","AA32","AA41","AA42",Vann[3],Vann[4]]].forEach(g=>{
+  facetPts(g[4],g[5],4).forEach((p,i)=>{const n=inward(p);
+    gen.push({label:g[i]+" · aéreo anexo",words:[g[i].toLowerCase()],
+      focus:[p[0]+n[0]*0.1,1.85,p[1]+n[1]*0.1],marker:[0.45,0.5,0.45],camera:[p[0]+n[0]*1.6,1.9,p[1]+n[1]*1.6]});});
+});
+// Mesa larga: 20 gavetas grandes ML1..ML20
+for(let i=0;i<20;i++){const x=-5.3+i*(10.6/19);
+  gen.push({label:"ML"+(i+1)+" · gaveta mesa larga",words:["ml"+(i+1)],focus:[x,0.55,-2.85],marker:[0.5,0.5,0.3]});}
+// Islas: F1..F12 (3 por isla, cara frontal)  [suposicion, confirmar]
+[-3,-1,1,3].forEach((cx,k)=>{[-1,0,1].forEach((zc,j)=>{const nn=k*3+j+1;
+  gen.push({label:"F"+nn+" · mueble isla "+(k+1),words:["f"+nn],focus:[cx-0.47,0.55,zc],marker:[0.4,0.6,0.8]});});});
+ITEMS.push.apply(ITEMS,gen);
+
+const marker=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),
+  new THREE.MeshBasicMaterial({color:0xe08a5d,wireframe:true,transparent:true,opacity:0}));
+add(marker); let guideOn=false;
+function itemCam(it){
+  if(it.camera) return new V3(...it.camera);
+  const f=new V3(...it.focus),dir=new V3().sub(f); dir.y=0;
+  if(dir.length()<0.01) dir.set(0,0,1); dir.normalize();
+  const c=f.clone().add(dir.multiplyScalar(it.distance||3.8)); c.y=Math.max(1.6,f.y+0.2); return c;
+}
+const PANO={cam:new V3(3,9,12),focus:new V3(-1.5,1,0)};
+
+let target=PANO.focus.clone(); const sph={r:16,theta:Math.PI*0.28,phi:Math.PI*0.42};
+const fromSph=()=>{camera.position.set(
+  target.x+sph.r*Math.sin(sph.phi)*Math.cos(sph.theta),
+  target.y+sph.r*Math.cos(sph.phi),
+  target.z+sph.r*Math.sin(sph.phi)*Math.sin(sph.theta)); camera.lookAt(target);};
+const syncSph=()=>{const o=camera.position.clone().sub(target);sph.r=o.length();
+  sph.phi=Math.acos(THREE.MathUtils.clamp(o.y/sph.r,-1,1));sph.theta=Math.atan2(o.z,o.x);};
+target.copy(PANO.focus); camera.position.copy(PANO.cam); camera.lookAt(target); syncSph();
+
+// ---- controles tactiles + mouse (1 dedo orbita, 2 dedos pellizco = zoom) ----
+const dom=renderer.domElement; dom.style.touchAction='none';
+const ptrs=new Map(); let pinchPrev=null;
+dom.addEventListener('pointerdown',e=>{try{dom.setPointerCapture(e.pointerId);}catch(_){}
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});});
+function endPtr(e){ptrs.delete(e.pointerId); if(ptrs.size<2)pinchPrev=null;}
+dom.addEventListener('pointerup',endPtr); dom.addEventListener('pointercancel',endPtr);
+dom.addEventListener('pointermove',e=>{
+  if(!ptrs.has(e.pointerId)||flight)return;
+  const p=ptrs.get(e.pointerId); const dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
+  if(ptrs.size>=2){
+    const a=[...ptrs.values()]; const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+    if(pinchPrev) sph.r=THREE.MathUtils.clamp(sph.r*(pinchPrev/d),4,40);
+    pinchPrev=d;
+  } else {
+    sph.theta-=dx*0.005; sph.phi=THREE.MathUtils.clamp(sph.phi-dy*0.005,0.05,1.9);
+  }
+});
+dom.addEventListener('wheel',e=>{if(flight)return;e.preventDefault();
+  sph.r=THREE.MathUtils.clamp(sph.r+e.deltaY*0.014,4,40);},{passive:false});
+
+let flight=null; const ease=k=>k<0.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+const flyTo=(cam,foc,dur=1700)=>flight={sp:camera.position.clone(),ep:cam.clone(),
+  st:target.clone(),et:foc.clone(),t0:performance.now(),dur};
+function tick(){requestAnimationFrame(tick);const now=performance.now();
+  if(flight){let k=Math.min((now-flight.t0)/flight.dur,1),e=ease(k);
+    camera.position.lerpVectors(flight.sp,flight.ep,e);target.lerpVectors(flight.st,flight.et,e);
+    camera.lookAt(target); if(k>=1){syncSph();flight=null;}} else fromSph();
+  marker.material.opacity=guideOn?0.45+0.35*Math.sin(now*0.005):Math.max(0,marker.material.opacity-0.04);
+  renderer.render(scene,camera);}
+tick();
+
+const toast=document.getElementById('toast'); let tT;
+const showToast=h=>{toast.innerHTML=h;toast.classList.add('on');clearTimeout(tT);
+  tT=setTimeout(()=>toast.classList.remove('on'),2600);};
+function search(raw){const q2=norm(raw); if(!q2)return;
+  const hit=ITEMS.find(it=>it.words.some(w=>norm(w)===q2)||norm(it.label).includes(q2)
+    ||it.words.some(w=>norm(w).includes(q2)||q2.includes(norm(w))));
+  if(!hit){showToast('Sin resultados para "'+raw+'"');return;}
+  flyTo(itemCam(hit),new V3(...hit.focus));
+  marker.position.set(...hit.focus);marker.scale.set(...(hit.marker||[1,1,1]));guideOn=true;
+  showToast('Guiando a: <b>'+hit.label+'</b>');}
+document.getElementById('go').onclick=()=>search(document.getElementById('q').value);
+document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')search(e.target.value)});
+document.getElementById('reset').onclick=()=>{guideOn=false;flyTo(PANO.cam,PANO.focus)};
+const dlst=document.getElementById('items');
+ITEMS.forEach(it=>{const o=document.createElement('option');o.value=it.label;dlst.appendChild(o)});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
