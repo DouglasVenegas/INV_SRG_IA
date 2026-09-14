@@ -25,7 +25,7 @@
   .caret{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:transparent;
     color:var(--muted);font-size:12px;cursor:pointer;padding:6px;line-height:1;width:auto;margin:0}
   .sugg{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;background:#fff;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;
-    border:1px solid var(--line);border-radius:10px;max-height:240px;overflow:auto;
+    border:1px solid var(--line);border-radius:10px;max-height:320px;overflow:auto;
     box-shadow:0 8px 24px #0f111522;padding:4px;display:none}
   .sugg.on{display:block}
   .sugg li{list-style:none;padding:8px 10px;border-radius:7px;font-size:14px;cursor:pointer;color:var(--ink)}
@@ -305,13 +305,15 @@ function search(raw){const q2=norm(raw); if(!q2)return;
 
 // ---- autocompletado propio (se despliega siempre y filtra al escribir) ----
 const input=document.getElementById('q'), sugg=document.getElementById('sugg'), caret=document.getElementById('caret');
-let current=[], activeIdx=-1;
-function filter(q){const n=norm(q); if(!n) return ITEMS.slice();
-  return ITEMS.filter(it=>norm(it.label).includes(n)||it.words.some(w=>norm(w).includes(n))); }
-function render(list){ current=list; activeIdx=-1;
-  sugg.innerHTML = list.length ? list.map((it,i)=>'<li data-i="'+i+'">'+it.label+'</li>').join('')
-                               : '<li class="empty">Sin coincidencias</li>';
-  sugg.classList.add('on'); }
+let current=[], activeIdx=-1; const LIMIT=8;
+const SORTED=[...ITEMS].sort((a,b)=>a.label.localeCompare(b.label,'es',{numeric:true}));
+function filter(q){const n=norm(q); if(!n) return SORTED;
+  return SORTED.filter(it=>norm(it.label).includes(n)||it.words.some(w=>norm(w).includes(n))); }
+function render(list){ activeIdx=-1; const shown=list.slice(0,LIMIT); current=shown;
+  let html = shown.length ? shown.map((it,i)=>'<li data-i="'+i+'">'+it.label+'</li>').join('')
+                          : '<li class="empty">Sin coincidencias</li>';
+  if(list.length>LIMIT) html+='<li class="empty">…+'+(list.length-LIMIT)+' más — sigue escribiendo</li>';
+  sugg.innerHTML=html; sugg.classList.add('on'); }
 function openList(){ render(filter(input.value)); }
 function closeList(){ sugg.classList.remove('on'); activeIdx=-1; }
 function choose(it){ if(!it)return; input.value=it.label; closeList(); flyToItem(it); }
@@ -331,7 +333,7 @@ sugg.addEventListener('click',e=>{const li=e.target.closest('li[data-i]'); if(!l
   choose(current[+li.dataset.i]); });
 document.addEventListener('pointerdown',e=>{ if(!e.target.closest('.ac')) closeList(); });
 caret.addEventListener('pointerdown',e=>{e.preventDefault();
-  if(sugg.classList.contains('on')) closeList(); else { render(ITEMS.slice()); input.focus(); } });
+  if(sugg.classList.contains('on')) closeList(); else { render(SORTED); input.focus(); } });
 
 document.getElementById('go').onclick=()=>{search(input.value);closeList();};
 document.getElementById('reset').onclick=()=>{guideOn=false;flyTo(PANO.cam,PANO.focus);};
