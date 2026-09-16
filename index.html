@@ -58,6 +58,16 @@
 const V3 = THREE.Vector3;
 const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 
+// ================= INVENTARIO: qué hay en cada gaveta (EDITA ESTA TABLA) =================
+// name = lo que se busca · words = sinónimos · code = código de la gaveta donde está
+const INVENTORY=[
+  {name:"Pipetas graduadas", words:["pipetas","pipeta","graduadas"], code:"F3"},
+  {name:"Micropipetas",      words:["micropipetas","micro"],         code:"F5"},
+  {name:"Guantes de nitrilo",words:["guantes","nitrilo"],            code:"ML4"},
+  {name:"Estándar de cafeína",words:["cafeina","estandar cafeina"],  code:"AG2"},
+];
+// ========================================================================================
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xeef0f3);
 scene.fog = new THREE.Fog(0xeef0f3, 28, 54);
@@ -238,6 +248,16 @@ for(let i=0;i<20;i++){const x=-5.3+i*(10.6/19);
 });});
 
 ITEMS.push.apply(ITEMS,gen);
+
+// mapa codigo -> ubicacion 3D (a partir de las gavetas ya generadas)
+const CODES={};
+gen.forEach(it=>{CODES[it.words[0].toUpperCase()]={focus:it.focus,camera:it.camera,marker:it.marker};});
+// volcar el inventario: cada contenido apunta a la ubicacion de su codigo
+INVENTORY.forEach(inv=>{const loc=CODES[(inv.code||'').toUpperCase()];
+  if(!loc){console.warn('Inventario: codigo no encontrado ->',inv.code);return;}
+  ITEMS.push({label:inv.name+' ('+inv.code+')',
+    words:(inv.words||[]).concat([(inv.code||'').toLowerCase(),norm(inv.name)]),
+    focus:loc.focus,camera:loc.camera,marker:loc.marker});});
 
 const marker=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),
   new THREE.MeshBasicMaterial({color:0xe08a5d,wireframe:true,transparent:true,opacity:0}));
