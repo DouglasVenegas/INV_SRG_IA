@@ -83,6 +83,9 @@ const dl2=new THREE.DirectionalLight(0xffffff,0.25); dl2.position.set(-12,10,-4)
 const add = m => { scene.add(m); return m; };
 const mat = c => new THREE.MeshStandardMaterial({color:c,roughness:0.85,metalness:0.05});
 const box = (w,h,d,c,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c));m.position.set(x,y,z);return add(m);};
+const cyl=(rt,rb,h,c,x,y,z,rx,rz)=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,20),mat(c));
+  m.position.set(x,y,z); if(rx)m.rotation.x=rx; if(rz)m.rotation.z=rz; return add(m);};
+const sphr=(r,c,x,y,z)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(r,18,14),mat(c));m.position.set(x,y,z);return add(m);};
 function segBox(x1,z1,x2,z2,h,y,depth,c){
   const dx=x2-x1,dz=z2-z1,L=Math.hypot(dx,dz);
   const m=new THREE.Mesh(new THREE.BoxGeometry(L,h,depth),mat(c));
@@ -131,10 +134,33 @@ for(let i=0;i<5;i++) wallSeg(Vann[i][0],Vann[i][1],Vann[i+1][0],Vann[i+1][1],3,-
 
 box(11,0.9,1.2,C.body,0,0.45,-3.4);
 box(11,0.1,1.2,C.top,0,0.95,-3.4);
-const EQ=[["XRF",-5,1.0,0.7],["Estufa vacío",-3.6,0.55,0.6],["Estufa",-2.15,0.6,0.6],
-  ["Centrífuga",-0.7,0.55,0.7],["Rotavapor",0.7,0.7,0.5],["Soxhlet",2.15,0.75,0.5],
-  ["Mufla",3.6,0.65,0.7],["Lactoscan",5,0.5,0.5]];
-EQ.forEach(e=>box(0.8,e[2],e[3],C.equip,e[1],0.95+e[2]/2,-3.4));
+const MT=0x9aa4ad, DK=0x2b3440, GL=0xc4d1de, AC=0x6e8ba8, GR=0x3fb37f; // metal, oscuro, vidrio, acento, verde
+function ovenBuild(x,z,vac){box(0.72,0.62,0.6,C.equip,x,1.31,z); box(0.5,0.5,0.04,0x8f99a3,x,1.28,z+0.31);
+  box(0.26,0.26,0.02,DK,x,1.33,z+0.34); cyl(0.02,0.02,0.34,DK,x+0.28,1.28,z+0.33);
+  box(0.72,0.12,0.05,DK,x,1.66,z+0.28);
+  if(vac){cyl(0.06,0.06,0.03,GL,x-0.2,1.66,z+0.34,Math.PI/2,0); box(0.05,0.3,0.05,MT,x-0.34,1.2,z+0.2);}}
+const equipBuild={
+ "XRF":(x,z)=>{box(0.72,0.5,0.6,C.equip,x,1.25,z); cyl(0.16,0.16,0.18,MT,x,1.6,z);
+   cyl(0.17,0.17,0.05,AC,x,1.72,z); box(0.3,0.2,0.03,DK,x,1.33,z+0.31);},
+ "Estufa":(x,z)=>ovenBuild(x,z,false),
+ "Estufa vacío":(x,z)=>ovenBuild(x,z,true),
+ "Centrífuga":(x,z)=>{box(0.62,0.18,0.62,C.equip,x,1.09,z); cyl(0.28,0.3,0.32,MT,x,1.34,z);
+   cyl(0.3,0.26,0.1,AC,x,1.55,z); box(0.22,0.12,0.03,DK,x,1.16,z+0.31);},
+ "Rotavapor":(x,z)=>{box(0.44,0.05,0.34,C.equip,x,1.02,z); cyl(0.16,0.16,0.14,MT,x-0.13,1.09,z);
+   sphr(0.12,GL,x-0.13,1.24,z); box(0.05,0.85,0.05,C.equip,x+0.2,1.44,z); box(0.16,0.14,0.2,AC,x+0.12,1.82,z);
+   cyl(0.045,0.045,0.5,GL,x,1.5,z,0,0.7);},
+ "Soxhlet":(x,z)=>{cyl(0.14,0.16,0.14,DK,x,1.07,z); sphr(0.13,GL,x,1.26,z);
+   cyl(0.05,0.05,0.42,GL,x,1.55,z); cyl(0.045,0.045,0.34,GL,x,1.92,z); box(0.03,1.0,0.03,MT,x+0.2,1.5,z);},
+ "Mufla":(x,z)=>{box(0.72,0.62,0.62,C.equip,x,1.31,z); box(0.46,0.46,0.05,0x8f99a3,x,1.3,z+0.32);
+   cyl(0.02,0.02,0.3,DK,x,1.05,z+0.35,0,Math.PI/2); box(0.72,0.14,0.06,DK,x,1.69,z+0.28);
+   box(0.2,0.07,0.02,GR,x,1.69,z+0.32);},
+ "Lactoscan":(x,z)=>{box(0.44,0.06,0.36,AC,x,1.03,z); box(0.4,0.34,0.32,C.equip,x,1.23,z);
+   box(0.26,0.16,0.02,DK,x,1.28,z+0.17); cyl(0.03,0.03,0.14,MT,x+0.14,1.47,z);},
+ _def:(x,z)=>box(0.7,0.6,0.6,C.equip,x,1.3,z)
+};
+const EQ=[["XRF",-5],["Estufa vacío",-3.6],["Estufa",-2.15],["Centrífuga",-0.7],
+  ["Rotavapor",0.7],["Soxhlet",2.15],["Mufla",3.6],["Lactoscan",5]];
+EQ.forEach(e=>(equipBuild[e[0]]||equipBuild._def)(e[1],-3.4));
 
 [-3,-1,1,3].forEach(cx=>{
   box(0.9,0.1,3.0,C.top,cx,0.9,0);
@@ -149,8 +175,10 @@ EQ.forEach(e=>box(0.8,e[2],e[3],C.equip,e[1],0.95+e[2]/2,-3.4));
   box(0.5,0.05,3.0,C.shelf,cx,1.78,0); box(0.5,0.05,3.0,C.shelf,cx,2.12,0);
 });
 
-box(1.2,2.6,1.3,C.capilla,5.35,1.3,1);
-box(0.8,1.6,0.7,C.foss,5.55,0.8,-1);
+box(1.2,0.85,1.3,C.drawer,5.4,0.42,1); box(1.26,0.06,1.36,0x8f99a3,5.4,0.9,1);
+box(1.2,1.65,1.3,C.capilla,5.4,1.85,1); box(0.05,0.75,1.15,0xb9c7d6,4.83,1.45,1); box(0.06,0.06,1.2,DK,4.8,1.85,1);
+box(0.76,0.1,0.66,DK,5.55,0.15,-1); box(0.7,1.4,0.6,C.foss,5.55,0.85,-1);
+cyl(0.04,0.04,0.9,GL,5.22,0.95,-1.15); cyl(0.04,0.04,0.9,GL,5.22,0.95,-0.85); box(0.28,0.2,0.03,DK,5.24,1.35,-1);
 box(1.0,2.1,0.6,C.drawer,5.5,1.05,-3);
 box(0.1,2.2,1.0,C.body,6,1.1,3.5); box(0.1,0.3,0.6,0x2f8f5e,5.95,2.35,3.5);
 
@@ -174,8 +202,10 @@ for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1], n=facetNormal(a,b), o=CD/2;
   segBox(ax,az,bx,bz,0.08,0.9,CD+0.04,C.top);}
 [[Vann[1],Vann[2]],[Vann[3],Vann[4]]].forEach(g=>{const a=g[0],b=g[1],n=facetNormal(a,b),o=0.2;
   segBox(a[0]+n[0]*o,a[1]+n[1]*o,b[0]+n[0]*o,b[1]+n[1]*o,0.6,1.8,0.4,C.shelf);});
-for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1], n=facetNormal(a,b);   // balanzas: 1 por lado, centradas sobre el mostrador
-  box(0.3,0.3,0.3,C.equip,(a[0]+b[0])/2+n[0]*(CD/2),1.09,(a[1]+b[1])/2+n[1]*(CD/2));}
+for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1], n=facetNormal(a,b);   // balanzas analiticas: base + camara de vidrio + plato + display
+  const mx=(a[0]+b[0])/2+n[0]*(CD/2), mz=(a[1]+b[1])/2+n[1]*(CD/2);
+  box(0.3,0.1,0.34,AC,mx,0.99,mz); box(0.24,0.22,0.24,0xb9c7d6,mx,1.16,mz);
+  cyl(0.06,0.06,0.02,GL,mx,1.06,mz); box(0.16,0.07,0.03,DK,mx+n[0]*0.17,1.0,mz+n[1]*0.17);}
 
 const ITEMS=[
   {label:"XRF (fluorescencia)",words:["xrf","rayos x","fluorescencia"],focus:[-5,1.15,-3.4],marker:[1.0,1.0,0.9]},
@@ -229,8 +259,8 @@ for(let fi=0; fi<5; fi++){
     let dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
     let nx=-dz, nz=dx; if((CN[0]-px)*nx+(CN[1]-pz)*nz<0){nx=-nx;nz=-nz;}
     const rot=Math.atan2(nx,nz);
-    makeLabel(g[i],px+nx*0.22,1.85,pz+nz*0.22,rot,0.24,0.12);
-    gen.push({code:g[i],focus:[px+nx*0.1,1.85,pz+nz*0.1],camera:[px+nx*1.6,1.9,pz+nz*1.6],marker:[0.4,0.5,0.4]});
+    makeLabel(g[i],px+nx*0.44,1.85,pz+nz*0.44,rot,0.24,0.12);
+    gen.push({code:g[i],focus:[px+nx*0.42,1.85,pz+nz*0.42],camera:[px+nx*1.7,1.9,pz+nz*1.7],marker:[0.4,0.5,0.4]});
   }
 });
 // Mesa larga: 20 gavetas grandes ML1..ML20 (frente hacia la sala)
@@ -243,10 +273,11 @@ for(let i=0;i<20;i++){const x=-5.3+i*(10.6/19);
 [-3,-1,1,3].forEach((cx,k)=>{
   [[-0.5,-Math.PI/2,-0.47],[0.5,Math.PI/2,0.47]].forEach((face,fi)=>{
     [-1,0,1].forEach((zc,j)=>{const n=k*6+fi*3+j+1;
+      const sgn=face[2]<0?-1:1, cam=[cx+sgn*1.47,1.4,zc];      // camara frente a la cara del mueble
       makeLabel("F"+n,cx+face[0],0.42,zc,face[1],0.3,0.12);    // gaveta grande (abajo)
       makeLabel("FA"+n,cx+face[0],0.74,zc,face[1],0.3,0.10);   // gaveta pequena (arriba)
-      gen.push({code:"F"+n,focus:[cx+face[2],0.42,zc],camera:null,marker:[0.35,0.45,0.85]});
-      gen.push({code:"FA"+n,focus:[cx+face[2],0.74,zc],camera:null,marker:[0.35,0.25,0.85]});
+      gen.push({code:"F"+n,focus:[cx+face[2],0.42,zc],camera:cam,marker:[0.35,0.45,0.85]});
+      gen.push({code:"FA"+n,focus:[cx+face[2],0.74,zc],camera:cam,marker:[0.35,0.25,0.85]});
     });
   });
 });
