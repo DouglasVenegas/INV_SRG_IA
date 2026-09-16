@@ -149,7 +149,7 @@ EQ.forEach(e=>box(0.8,e[2],e[3],C.equip,e[1],0.95+e[2]/2,-3.4));
   box(0.5,0.05,3.0,C.shelf,cx,1.78,0); box(0.5,0.05,3.0,C.shelf,cx,2.12,0);
 });
 
-box(1.2,2.6,1.3,C.capilla,5.35,1.3,1); box(1.15,1.4,0.06,0x9fb4cf,4.85,1.45,1);
+box(1.2,2.6,1.3,C.capilla,5.35,1.3,1);
 box(0.8,1.6,0.7,C.foss,5.55,0.8,-1);
 box(1.0,2.1,0.6,C.drawer,5.5,1.05,-3);
 box(0.1,2.2,1.0,C.body,6,1.1,3.5); box(0.1,0.3,0.6,0x2f8f5e,5.95,2.35,3.5);
@@ -164,14 +164,18 @@ box(0.1,2.2,0.1,C.body,-6,1.1,2.5); box(0.1,2.2,0.1,C.body,-6,1.1,3.4);
 box(0.1,0.15,0.9,C.body,-6,2.15,2.95);
 const leaf=box(0.05,2.0,0.85,C.wood,-5.62,1.0,2.72); leaf.rotation.y=0.5;
 
-for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1];
-  segBox(a[0],a[1],b[0],b[1],0.9,0.45,0.6,C.body);
-  segBox(a[0],a[1],b[0],b[1],0.08,0.9,0.64,C.top);}
-segBox(Vann[1][0],Vann[1][1],Vann[2][0],Vann[2][1],0.6,1.8,0.4,C.shelf);
-segBox(Vann[3][0],Vann[3][1],Vann[4][0],Vann[4][1],0.6,1.8,0.4,C.shelf);
-[[-7.25,-1.75],[-8.4,-1.0],[-8.6,0],[-8.4,1.0],[-7.25,1.75]].forEach(p=>{
-  const ix=CN[0]-p[0], iz=CN[1]-p[1], L=Math.hypot(ix,iz)||1;
-  box(0.4,0.34,0.4,C.equip, p[0]+ix/L*0.06, 1.07, p[1]+iz/L*0.06);});
+function facetNormal(a,b){let dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz)||1;dx/=L;dz/=L;
+  let nx=-dz,nz=dx; const mx=(a[0]+b[0])/2,mz=(a[1]+b[1])/2;
+  if((CN[0]-mx)*nx+(CN[1]-mz)*nz<0){nx=-nx;nz=-nz;} return [nx,nz];}
+const CD=0.6;   // profundidad del mostrador del anexo (metido hacia adentro)
+for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1], n=facetNormal(a,b), o=CD/2;
+  const ax=a[0]+n[0]*o, az=a[1]+n[1]*o, bx=b[0]+n[0]*o, bz=b[1]+n[1]*o;
+  segBox(ax,az,bx,bz,0.9,0.45,CD,C.body);
+  segBox(ax,az,bx,bz,0.08,0.9,CD+0.04,C.top);}
+[[Vann[1],Vann[2]],[Vann[3],Vann[4]]].forEach(g=>{const a=g[0],b=g[1],n=facetNormal(a,b),o=0.2;
+  segBox(a[0]+n[0]*o,a[1]+n[1]*o,b[0]+n[0]*o,b[1]+n[1]*o,0.6,1.8,0.4,C.shelf);});
+for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1], n=facetNormal(a,b);   // balanzas: 1 por lado, centradas sobre el mostrador
+  box(0.3,0.3,0.3,C.equip,(a[0]+b[0])/2+n[0]*(CD/2),1.09,(a[1]+b[1])/2+n[1]*(CD/2));}
 
 const ITEMS=[
   {label:"XRF (fluorescencia)",words:["xrf","rayos x","fluorescencia"],focus:[-5,1.15,-3.4],marker:[1.0,1.0,0.9]},
@@ -200,31 +204,23 @@ const ITEMS=[
 ];
 
 // ---------- nomenclatura + gavetas visibles ----------
-function annexUnit(t){
-  let segs=[],total=0;
-  for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1];const L=Math.hypot(b[0]-a[0],b[1]-a[1]);segs.push({a,b,L});total+=L;}
-  let d=t*total, seg=segs[0];
-  for(const s of segs){ if(d<=s.L){seg=s;break;} d-=s.L; }
-  const f=Math.max(0,Math.min(1,d/seg.L));
-  const px=seg.a[0]+(seg.b[0]-seg.a[0])*f, pz=seg.a[1]+(seg.b[1]-seg.a[1])*f;
-  let dx=seg.b[0]-seg.a[0], dz=seg.b[1]-seg.a[1], L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
-  let nx=-dz, nz=dx;                                    // normal del lado
-  if((CN[0]-px)*nx+(CN[1]-pz)*nz<0){nx=-nx;nz=-nz;}     // hacia el interior
-  return {x:px,z:pz,nx,nz};
-}
 const drawerFront=(w,h,x,y,z,rot)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,0.04),mat(C.drawer));
   m.position.set(x,y,z); m.rotation.y=rot; return add(m);};
 const gen=[]; // {code, focus, camera, marker}  (referencia interna, NO va a la lista)
 
-// Anexo: 9 modulos (AG gaveta arriba + AE estante abajo), alineados a cada lado
-for(let i=0;i<9;i++){
-  const u=annexUnit((i+0.5)/9), rot=Math.atan2(u.nx,u.nz);
-  const fx=u.x+u.nx*0.31, fz=u.z+u.nz*0.31, cam=[u.x+u.nx*1.7,1.5,u.z+u.nz*1.7];
-  drawerFront(0.4,0.18,fx,0.66,fz,rot); drawerFront(0.4,0.34,fx,0.34,fz,rot);
-  makeLabel("AG"+(i+1),fx+u.nx*0.03,0.66,fz+u.nz*0.03,rot,0.28,0.11);
-  makeLabel("AE"+(i+1),fx+u.nx*0.03,0.34,fz+u.nz*0.03,rot,0.28,0.12);
-  gen.push({code:"AG"+(i+1),focus:[fx,0.66,fz],camera:cam,marker:[0.5,0.28,0.5]});
-  gen.push({code:"AE"+(i+1),focus:[fx,0.34,fz],camera:cam,marker:[0.5,0.4,0.5]});
+// Anexo: AG (gaveta arriba) + AE (estante abajo), repartidas por lado y a ras del frente
+const perFacet=[2,2,1,2,2]; let ci=0;
+for(let fi=0; fi<5; fi++){
+  const a=Vann[fi], b=Vann[fi+1], n=facetNormal(a,b), rot=Math.atan2(n[0],n[1]), cnt=perFacet[fi];
+  for(let j=0;j<cnt;j++){ ci++;
+    const t=(j+1)/(cnt+1), px=a[0]+(b[0]-a[0])*t, pz=a[1]+(b[1]-a[1])*t;
+    const fx=px+n[0]*0.6, fz=pz+n[1]*0.6, cam=[px+n[0]*1.9,1.5,pz+n[1]*1.9];
+    drawerFront(0.36,0.18,fx,0.66,fz,rot); drawerFront(0.36,0.34,fx,0.34,fz,rot);
+    makeLabel("AG"+ci,fx+n[0]*0.03,0.66,fz+n[1]*0.03,rot,0.26,0.11);
+    makeLabel("AE"+ci,fx+n[0]*0.03,0.34,fz+n[1]*0.03,rot,0.26,0.12);
+    gen.push({code:"AG"+ci,focus:[fx,0.66,fz],camera:cam,marker:[0.45,0.28,0.45]});
+    gen.push({code:"AE"+ci,focus:[fx,0.34,fz],camera:cam,marker:[0.45,0.4,0.45]});
+  }
 }
 // Anexo aereos AA (2 muebles x 4 compartimentos)
 [["AA11","AA12","AA21","AA22",Vann[1],Vann[2]],["AA31","AA32","AA41","AA42",Vann[3],Vann[4]]].forEach(g=>{
@@ -247,8 +243,10 @@ for(let i=0;i<20;i++){const x=-5.3+i*(10.6/19);
 [-3,-1,1,3].forEach((cx,k)=>{
   [[-0.5,-Math.PI/2,-0.47],[0.5,Math.PI/2,0.47]].forEach((face,fi)=>{
     [-1,0,1].forEach((zc,j)=>{const n=k*6+fi*3+j+1;
-      makeLabel("F"+n,cx+face[0],0.55,zc,face[1],0.32,0.14);
-      gen.push({code:"F"+n,focus:[cx+face[2],0.5,zc],camera:null,marker:[0.35,0.85,0.85]});
+      makeLabel("F"+n,cx+face[0],0.42,zc,face[1],0.3,0.12);    // gaveta grande (abajo)
+      makeLabel("FA"+n,cx+face[0],0.74,zc,face[1],0.3,0.10);   // gaveta pequena (arriba)
+      gen.push({code:"F"+n,focus:[cx+face[2],0.42,zc],camera:null,marker:[0.35,0.45,0.85]});
+      gen.push({code:"FA"+n,focus:[cx+face[2],0.74,zc],camera:null,marker:[0.35,0.25,0.85]});
     });
   });
 });
