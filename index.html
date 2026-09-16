@@ -165,12 +165,13 @@ box(0.1,0.15,0.9,C.body,-6,2.15,2.95);
 const leaf=box(0.05,2.0,0.85,C.wood,-5.62,1.0,2.72); leaf.rotation.y=0.5;
 
 for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1];
-  segBox(a[0],a[1],b[0],b[1],0.9,0.45,0.5,C.body);
-  segBox(a[0],a[1],b[0],b[1],0.08,0.9,0.55,C.top);}
+  segBox(a[0],a[1],b[0],b[1],0.9,0.45,0.6,C.body);
+  segBox(a[0],a[1],b[0],b[1],0.08,0.9,0.64,C.top);}
 segBox(Vann[1][0],Vann[1][1],Vann[2][0],Vann[2][1],0.6,1.8,0.4,C.shelf);
 segBox(Vann[3][0],Vann[3][1],Vann[4][0],Vann[4][1],0.6,1.8,0.4,C.shelf);
-[[-7.25,-1.75],[-8.4,-1.0],[-8.6,0],[-8.4,1.0],[-7.25,1.75]].forEach(p=>
-  box(0.6,0.5,0.5,C.equip,p[0],1.15,p[1]));
+[[-7.25,-1.75],[-8.4,-1.0],[-8.6,0],[-8.4,1.0],[-7.25,1.75]].forEach(p=>{
+  const ix=CN[0]-p[0], iz=CN[1]-p[1], L=Math.hypot(ix,iz)||1;
+  box(0.4,0.34,0.4,C.equip, p[0]+ix/L*0.06, 1.07, p[1]+iz/L*0.06);});
 
 const ITEMS=[
   {label:"XRF (fluorescencia)",words:["xrf","rayos x","fluorescencia"],focus:[-5,1.15,-3.4],marker:[1.0,1.0,0.9]},
@@ -198,7 +199,7 @@ const ITEMS=[
   {label:"Puerta de entrada",words:["puerta entrada","entrada"],focus:[-6,1.1,2.9],marker:[0.4,2.2,1.0],camera:[-4.4,1.6,2.9]},
 ];
 
-// ---------- nomenclatura + gavetas visibles con etiqueta ----------
+// ---------- nomenclatura + gavetas visibles ----------
 function annexUnit(t){
   let segs=[],total=0;
   for(let i=0;i<5;i++){const a=Vann[i],b=Vann[i+1];const L=Math.hypot(b[0]-a[0],b[1]-a[1]);segs.push({a,b,L});total+=L;}
@@ -206,57 +207,59 @@ function annexUnit(t){
   for(const s of segs){ if(d<=s.L){seg=s;break;} d-=s.L; }
   const f=Math.max(0,Math.min(1,d/seg.L));
   const px=seg.a[0]+(seg.b[0]-seg.a[0])*f, pz=seg.a[1]+(seg.b[1]-seg.a[1])*f;
-  const ix=CN[0]-px, iz=CN[1]-pz, L=Math.hypot(ix,iz)||1;
-  return {x:px,z:pz,nx:ix/L,nz:iz/L};
+  let dx=seg.b[0]-seg.a[0], dz=seg.b[1]-seg.a[1], L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
+  let nx=-dz, nz=dx;                                    // normal del lado
+  if((CN[0]-px)*nx+(CN[1]-pz)*nz<0){nx=-nx;nz=-nz;}     // hacia el interior
+  return {x:px,z:pz,nx,nz};
 }
 const drawerFront=(w,h,x,y,z,rot)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,0.04),mat(C.drawer));
   m.position.set(x,y,z); m.rotation.y=rot; return add(m);};
-const gen=[];
+const gen=[]; // {code, focus, camera, marker}  (referencia interna, NO va a la lista)
 
-// Anexo: 9 modulos (AG gaveta arriba + AE estante abajo)
+// Anexo: 9 modulos (AG gaveta arriba + AE estante abajo), alineados a cada lado
 for(let i=0;i<9;i++){
   const u=annexUnit((i+0.5)/9), rot=Math.atan2(u.nx,u.nz);
-  const fx=u.x+u.nx*0.26, fz=u.z+u.nz*0.26, cam=[u.x+u.nx*1.7,1.5,u.z+u.nz*1.7];
-  drawerFront(0.42,0.18,fx,0.66,fz,rot); drawerFront(0.42,0.34,fx,0.34,fz,rot);
-  makeLabel("AG"+(i+1),fx+u.nx*0.03,0.66,fz+u.nz*0.03,rot,0.3,0.11);
-  makeLabel("AE"+(i+1),fx+u.nx*0.03,0.34,fz+u.nz*0.03,rot,0.3,0.13);
-  gen.push({label:"AG"+(i+1)+" · gaveta anexo",words:["ag"+(i+1)],focus:[fx,0.66,fz],marker:[0.5,0.28,0.5],camera:cam});
-  gen.push({label:"AE"+(i+1)+" · estante anexo",words:["ae"+(i+1)],focus:[fx,0.34,fz],marker:[0.5,0.4,0.5],camera:cam});
+  const fx=u.x+u.nx*0.31, fz=u.z+u.nz*0.31, cam=[u.x+u.nx*1.7,1.5,u.z+u.nz*1.7];
+  drawerFront(0.4,0.18,fx,0.66,fz,rot); drawerFront(0.4,0.34,fx,0.34,fz,rot);
+  makeLabel("AG"+(i+1),fx+u.nx*0.03,0.66,fz+u.nz*0.03,rot,0.28,0.11);
+  makeLabel("AE"+(i+1),fx+u.nx*0.03,0.34,fz+u.nz*0.03,rot,0.28,0.12);
+  gen.push({code:"AG"+(i+1),focus:[fx,0.66,fz],camera:cam,marker:[0.5,0.28,0.5]});
+  gen.push({code:"AE"+(i+1),focus:[fx,0.34,fz],camera:cam,marker:[0.5,0.4,0.5]});
 }
-
 // Anexo aereos AA (2 muebles x 4 compartimentos)
 [["AA11","AA12","AA21","AA22",Vann[1],Vann[2]],["AA31","AA32","AA41","AA42",Vann[3],Vann[4]]].forEach(g=>{
   const a=g[4],b=g[5];
   for(let i=0;i<4;i++){const f=(i+0.5)/4, px=a[0]+(b[0]-a[0])*f, pz=a[1]+(b[1]-a[1])*f;
-    const ix=CN[0]-px, iz=CN[1]-pz, L=Math.hypot(ix,iz)||1, nx=ix/L, nz=iz/L, rot=Math.atan2(nx,nz);
+    let dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
+    let nx=-dz, nz=dx; if((CN[0]-px)*nx+(CN[1]-pz)*nz<0){nx=-nx;nz=-nz;}
+    const rot=Math.atan2(nx,nz);
     makeLabel(g[i],px+nx*0.22,1.85,pz+nz*0.22,rot,0.24,0.12);
-    gen.push({label:g[i]+" · aéreo anexo",words:[g[i].toLowerCase()],focus:[px+nx*0.1,1.85,pz+nz*0.1],marker:[0.4,0.5,0.4],camera:[px+nx*1.6,1.9,pz+nz*1.6]});
+    gen.push({code:g[i],focus:[px+nx*0.1,1.85,pz+nz*0.1],camera:[px+nx*1.6,1.9,pz+nz*1.6],marker:[0.4,0.5,0.4]});
   }
 });
-
 // Mesa larga: 20 gavetas grandes ML1..ML20 (frente hacia la sala)
 for(let i=0;i<20;i++){const x=-5.3+i*(10.6/19);
   drawerFront(0.44,0.55,x,0.45,-2.79,0);
   makeLabel("ML"+(i+1),x,0.45,-2.76,0,0.4,0.16);
-  gen.push({label:"ML"+(i+1)+" · gaveta mesa larga",words:["ml"+(i+1)],focus:[x,0.45,-2.79],marker:[0.45,0.55,0.2]});
+  gen.push({code:"ML"+(i+1),focus:[x,0.45,-2.79],camera:null,marker:[0.45,0.55,0.2]});
 }
+// Islas: F1..F24 (6 por isla = 3 muebles x 2 caras), etiqueta en ambas caras
+[-3,-1,1,3].forEach((cx,k)=>{
+  [[-0.5,-Math.PI/2,-0.47],[0.5,Math.PI/2,0.47]].forEach((face,fi)=>{
+    [-1,0,1].forEach((zc,j)=>{const n=k*6+fi*3+j+1;
+      makeLabel("F"+n,cx+face[0],0.55,zc,face[1],0.32,0.14);
+      gen.push({code:"F"+n,focus:[cx+face[2],0.5,zc],camera:null,marker:[0.35,0.85,0.85]});
+    });
+  });
+});
 
-// Islas: F1..F12 (etiqueta en la cara frontal; 3 por isla, a confirmar)
-[-3,-1,1,3].forEach((cx,k)=>{[-1,0,1].forEach((zc,j)=>{const n=k*3+j+1;
-  makeLabel("F"+n,cx-0.5,0.42,zc,-Math.PI/2,0.34,0.16);
-  gen.push({label:"F"+n+" · mueble isla "+(k+1),words:["f"+n],focus:[cx-0.47,0.42,zc],marker:[0.35,0.6,0.8]});
-});});
-
-ITEMS.push.apply(ITEMS,gen);
-
-// mapa codigo -> ubicacion 3D (a partir de las gavetas ya generadas)
-const CODES={};
-gen.forEach(it=>{CODES[it.words[0].toUpperCase()]={focus:it.focus,camera:it.camera,marker:it.marker};});
-// volcar el inventario: cada contenido apunta a la ubicacion de su codigo
+// mapa codigo -> ubicacion 3D (referencia interna; los codigos NO entran a la lista)
+const CODES={}; gen.forEach(it=>{CODES[it.code.toUpperCase()]={focus:it.focus,camera:it.camera,marker:it.marker};});
+// inventario: cada contenido apunta a la ubicacion de su codigo -> ESTO si aparece en la lista
 INVENTORY.forEach(inv=>{const loc=CODES[(inv.code||'').toUpperCase()];
   if(!loc){console.warn('Inventario: codigo no encontrado ->',inv.code);return;}
   ITEMS.push({label:inv.name+' ('+inv.code+')',
-    words:(inv.words||[]).concat([(inv.code||'').toLowerCase(),norm(inv.name)]),
+    words:(inv.words||[]).concat([norm(inv.name)]),
     focus:loc.focus,camera:loc.camera,marker:loc.marker});});
 
 const marker=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),
